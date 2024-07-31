@@ -1,4 +1,8 @@
-import { appendFile, createWriteStream } from "node:fs"
+import { createWriteStream } from "node:fs"
+import { Resend } from "resend"
+import colors from "colors"
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const BASE_URL = 'https://data.sncf.com/api/explore/v2.1/catalog/datasets/tgvmax/records';
 const SELECT_VALUES: string[] = ['date', 'origine', 'destination', 'heure_depart', 'heure_arrivee', 'od_happy_card as tgvmax'];
@@ -83,9 +87,19 @@ async function fetchTGVMaxData(): Promise<TGVMaxData[]> {
   }
 }
 
-async function sendSMSIfResults(r: TGVMaxData[]): Promise<void> {
+async function sendEmailIfResults(r: TGVMaxData[]): Promise<void> {
     if(r.length > 0) {
-        console.log("Train dispo !! ", r);
+        console.log("Train dispo !! ");
+        try {
+            const email = await resend.emails.send({
+                from: 'TGVMAX Alert <tgvmax@melobeatsz.fr>',
+                to: 'ghoggal.liam@gmail.com',
+                subject: 'Train dispo !',
+                text: 'Train dispo !! ' + r.length + ' trains disponibles ' + r[0].date + ' à ' + r[0].heure_depart + ' depuis ' + r[0].origine + ' vers ' + r[0].destination
+            })
+        } catch (error) {
+            console.error('Erreur lors de l\'envoi de l\'email:', error);
+        }
     } else {
         console.log("Pas de train dispo (recherche faite le " + new Date().toLocaleDateString() + " à " + new Date().toLocaleTimeString() + ") !! ");
     }
@@ -98,11 +112,13 @@ async function fillLogFile(r: TGVMaxData[]): Promise<void> {
   logFile.end();
 }
 
+console.log(colors.rainbow("Recherche de train disponibles en cours..."));
+
 // Exécution de la fonction
 let times = 0;
 const interval = setInterval(() => {
     fetchTGVMaxData()
-    .then(sendSMSIfResults)
+    .then(sendEmailIfResults)
     .catch(error => {
     console.error('Une erreur est survenue:', error);
     }).finally(() => {
@@ -112,5 +128,5 @@ const interval = setInterval(() => {
             console.log("Arrêt de l'intervalle");
         }
     });
-}, 1000 * 5 );
+}, 1000 * 60 * 5 );
 
